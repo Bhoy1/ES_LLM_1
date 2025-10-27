@@ -1,0 +1,7 @@
+title: "ES_LLM Blog"
+description: "Evolution Strategies, LoRA, and continual-learning experiments"
+theme: minima
+markdown: kramdown
+plugins:
+  - jekyll-feed
+  - jekyll-seo-tag
