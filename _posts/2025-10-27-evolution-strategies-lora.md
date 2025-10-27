@@ -4,8 +4,8 @@
 ---
 
 <hr>
-<h2 id="layout-posttitle-evolution-strategies-with-lora-why-full-fine-tuning-still-winsdate-2025-10-27categories-research-llms-continual-learning-evolution-strategies">layout: post<br>
-title: “Evolution Strategies with LoRA: Why Full Fine-Tuning Still Wins”<br>
+<h2 id="layout-posttitle-evolution-strategies-with-loradate-2025-10-27categories-research-llms-continual-learning-evolution-strategies">layout: post<br>
+title: “Evolution Strategies with LoRA”<br>
 date: 2025-10-27<br>
 categories: [research, LLMs, continual-learning, evolution-strategies]</h2>
 <h2 id="overview">Overview</h2>
