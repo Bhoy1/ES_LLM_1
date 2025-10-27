@@ -1,0 +1,17 @@
+vllm
+transformers
+accelerate
+numpy
+psutil
+pandas
+peft
+
+
+#torch2.8
+#vllm0.11
+#numpu2.12
+#peft0.17.1
+#transformers 4.57.1
+#psutil 7.1.0
+#accelerate 1.10.1
+
