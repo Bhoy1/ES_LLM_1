@@ -213,9 +213,7 @@ These early findings suggest that LoRA’s reduced search space does not substan
 <p>Cumulative reward reflects total progress as more prompts are evaluated.</p>
 <p><img src="https://raw.githubusercontent.com/Bhoy1/ES_LLM_1/415498f89e86b50cd2710601da3a0fabbb4378c6/images/cumulative_reward_plot.png" alt="Cumulative Reward Plot"></p>
 <h3 id="reward-progression-over-iterations">3. Reward Progression Over Iterations</h3>
-<p>The figure below visualizes test reward progression across 1000 Evolution Strategies (ES) iterations for both LoRA and full fine tuning.<br>
-The horizontal dashed line at 0 represents the ideal reward (perfect target-length match).<br>
-Values closer to 0 indicate better performance, while more negative values reflect larger deviations.</p>
+<p>The figure below visualizes test reward progression across 1000 Evolution Strategies (ES) iterations for both LoRA and full fine tuning.  The horizontal dashed line at 0 represents the ideal reward (perfect target-length match).</p>
 <p><img src="https://github.com/Bhoy1/ES_LLM_1/blob/23fd3b3dd677e0751de8bd8220ec78f913a3a62d/images/iteration_reward_plot.png?raw=true" alt="Reward Progression Over Iterations"></p>
 <p>Full fine tuning reaches −150 by iteration 500, while LoRA stays near −167, showing early convergence and limited improvement after. The results shown in a table earlier this section are the results after 1000 iterations.</p>
 <h2 id="discussion">Discussion</h2>
