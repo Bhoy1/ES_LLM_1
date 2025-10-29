@@ -1,3 +1,7 @@
+#this is the original code, not the speed up version 
+#this has iteration checking to see convergence
+
+
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from transformers.utils import logging
@@ -24,6 +28,7 @@ parser.add_argument('--hf_cache_dir', type=str, default='huggingface_cache')
 parser.add_argument('--precision', type=str, default='bf16')
 parser.add_argument('--gpu_threads', type=int, default=4, help='Number of parallel threads per GPU')
 parser.add_argument('--verbose', action='store_true', help='Print verbose logs')
+parser.add_argument('--checkpoint_interval', type=int, default=100, help='Evaluate on test set every N iterations')
 args = parser.parse_args()
 
 
@@ -111,6 +116,28 @@ def evaluate_model(model, tokenizer, input_text, target_text, accelerator, seed_
     else:
         return rewards
 
+def evaluate_on_test_set(model, tokenizer, test_dataset, accelerator):
+    """
+    Evaluate model on test dataset
+    Returns list of results with prompt, target, generated, reward
+    """
+    test_results = []
+    
+    for prompt, target in test_dataset:
+        rewards, generated_texts = evaluate_model(
+            model, tokenizer, [prompt], [target], 
+            accelerator, return_text=True
+        )
+        
+        test_results.append({
+            'prompt': prompt,
+            'target': target,
+            'generated': generated_texts[0],
+            'reward': rewards[0]
+        })
+    
+    return test_results
+
 def process_seed(seed_args):
     """Function to process a single seed, used for thread pool"""
     seed_idx, seed, model, tokenizer, accelerator, thread_id, verbose = seed_args
@@ -183,6 +210,7 @@ def main():
         print(f"Total processes: {accelerator.num_processes}, GPU threads per process: {args.gpu_threads}")
         print(f"Population size: {POPULATION_SIZE}, Iterations: {NUM_ITERATIONS}")
         print(f"Sigma: {SIGMA}, Alpha: {ALPHA}")
+        print(f"Checkpoint interval: {args.checkpoint_interval}")
 
     # Load model
     model_name = args.model_name
@@ -218,6 +246,11 @@ def main():
 
     # Initialize metrics logging
     metrics_log = []
+    checkpoint_history = []  # Track checkpoint evaluations
+
+    # Prepare save directory name
+    question_num = len(dataset)
+    save_dir = f"finetuned_{model_name.replace('/', '_')}_es_random_seed{initial_seed}_pop{POPULATION_SIZE}_iter{NUM_ITERATIONS}_sigma{SIGMA}_alpha{ALPHA}_{args.precision}_threads{args.gpu_threads}_question_num{question_num}_correct"
 
     np.random.seed(initial_seed)
 
@@ -364,6 +397,61 @@ def main():
         if accelerator.is_main_process:
             print(f"Iteration {iteration + 1}/{NUM_ITERATIONS}, Time: {iter_time:.2f}s, Mean: {mean_reward:.2f}, Min: {min_reward:.2f}, Max: {max_reward:.2f}")
             print(f"GPU Memory: {torch.cuda.memory_allocated() / 1024**2:.2f}MB allocated, {torch.cuda.max_memory_allocated() / 1024**2:.2f}MB peak")
+            
+            # Check if this is a checkpoint iteration
+            if (iteration + 1) % args.checkpoint_interval == 0:
+                checkpoint_start = time.time()
+                
+                print(f"\n{'='*80}")
+                print(f"CHECKPOINT EVALUATION - Iteration {iteration + 1}")
+                print(f"{'='*80}")
+                
+                # Calculate rolling window training mean
+                window_start = max(0, iteration + 1 - args.checkpoint_interval)
+                window_end = iteration + 1
+                window_rewards = [m['mean_reward'] for m in metrics_log[window_start:window_end]]
+                training_mean = np.mean(window_rewards)
+                
+                # Run test evaluation
+                test_results = evaluate_on_test_set(original_model, tokenizer, test_dataset, accelerator)
+                test_mean_reward = np.mean([r['reward'] for r in test_results])
+                
+                # Save test results to JSON
+                test_results_file = f"{save_dir}_eval_iter{iteration + 1}.json"
+                with open(test_results_file, 'w') as f:
+                    json.dump(test_results, f, indent=2)
+                
+                # Calculate elapsed time
+                elapsed_minutes = (time.time() - training_start_time) / 60
+                
+                # Print checkpoint summary
+                print(f"Training reward (mean of iters {window_start + 1}-{window_end}): {training_mean:.2f}")
+                print(f"Test mean reward: {test_mean_reward:.2f}")
+                print(f"Elapsed time: {elapsed_minutes:.1f} minutes")
+                
+                # Calculate and print trend if not first checkpoint
+                if len(checkpoint_history) > 0:
+                    prev_train = checkpoint_history[-1]['training_mean']
+                    prev_test = checkpoint_history[-1]['test_mean']
+                    train_diff = training_mean - prev_train
+                    test_diff = test_mean_reward - prev_test
+                    train_arrow = '↑' if train_diff > 0 else ('↓' if train_diff < 0 else '→')
+                    test_arrow = '↑' if test_diff > 0 else ('↓' if test_diff < 0 else '→')
+                    print(f"Trend: Train {train_arrow} {train_diff:+.2f} | Test {test_arrow} {test_diff:+.2f}")
+                
+                print(f"{'='*80}\n")
+                
+                # Save checkpoint info
+                checkpoint_history.append({
+                    'iteration': iteration + 1,
+                    'training_mean': training_mean,
+                    'test_mean': test_mean_reward,
+                    'window_start': window_start + 1,
+                    'window_end': window_end
+                })
+                
+                checkpoint_time = time.time() - checkpoint_start
+                print(f"Checkpoint evaluation completed in {checkpoint_time:.2f}s\n")
 
     total_time = time.time() - training_start_time
 
@@ -371,72 +459,34 @@ def main():
     # Save the fine-tuned model weights.
     if accelerator.is_main_process:
         print(f"\nTraining completed in {total_time:.2f}s ({total_time/60:.2f} minutes)")
-        question_num = len(dataset)
-        save_dir = f"finetuned_{model_name.replace('/', '_')}_es_random_seed{initial_seed}_pop{POPULATION_SIZE}_iter{NUM_ITERATIONS}_sigma{SIGMA}_alpha{ALPHA}_{args.precision}_threads{args.gpu_threads}_question_num{question_num}_correct"
         
         print(f"\nSaving model to {save_dir}...")
         original_model.save_pretrained(save_dir)
         tokenizer.save_pretrained(save_dir)
         print(f"Model saved successfully.")
         
-        # Save metrics log
-        metrics_file = f"{save_dir}_metrics.json"
+        # Save training metrics log
+        metrics_file = f"{save_dir}_training_metrics.json"
         with open(metrics_file, 'w') as f:
             json.dump(metrics_log, f, indent=2)
-        print(f"Metrics saved to {metrics_file}")
+        print(f"Training metrics saved to {metrics_file}")
         
-        # Evaluate on training dataset
+        # Print final summary
         print("\n" + "="*80)
-        print("FINAL EVALUATION ON TRAINING DATASET")
+        print("FINAL SUMMARY")
         print("="*80)
-        for i, (prompt, target) in enumerate(dataset):
-            rewards, generated_texts = evaluate_model(
-                original_model, tokenizer, [prompt], [target], 
-                accelerator, return_text=True
-            )
-            print(f"\nTraining Example {i+1}:")
-            print(f"  Prompt: {prompt}")
-            print(f"  Target: {target}")
-            print(f"  Generated: {generated_texts[0]}")
-            print(f"  Reward: {rewards[0]:.2f}")
+        print("Checkpoint History:")
+        for cp in checkpoint_history:
+            print(f"  Iter {cp['iteration']:4d} | Train ({cp['window_start']}-{cp['window_end']}): {cp['training_mean']:8.2f} | Test: {cp['test_mean']:8.2f}")
         
-        # Evaluate on test dataset
-        print("\n" + "="*80)
-        print("FINAL EVALUATION ON TEST DATASET (GENERALIZATION)")
-        print("="*80)
-        test_results = []
-        for i, (prompt, target) in enumerate(test_dataset):
-            rewards, generated_texts = evaluate_model(
-                original_model, tokenizer, [prompt], [target], 
-                accelerator, return_text=True
-            )
-            result = {
-                'prompt': prompt,
-                'target': target,
-                'generated': generated_texts[0],
-                'reward': rewards[0]
-            }
-            test_results.append(result)
-            print(f"\nTest Example {i+1}:")
-            print(f"  Prompt: {prompt}")
-            print(f"  Target: {target}")
-            print(f"  Generated: {generated_texts[0]}")
-            print(f"  Reward: {rewards[0]:.2f}")
+        # Find best test reward
+        if checkpoint_history:
+            best_checkpoint = max(checkpoint_history, key=lambda x: x['test_mean'])
+            print(f"\nBest test reward: {best_checkpoint['test_mean']:.2f} (at iteration {best_checkpoint['iteration']})")
         
-        # Save test results
-        test_results_file = f"{save_dir}_test_results.json"
-        with open(test_results_file, 'w') as f:
-            json.dump(test_results, f, indent=2)
-        print(f"\nTest results saved to {test_results_file}")
-        
-        # Summary statistics
-        test_mean_reward = np.mean([r['reward'] for r in test_results])
-        print(f"\n" + "="*80)
-        print(f"FINAL SUMMARY")
-        print(f"="*80)
-        print(f"Final training reward: {metrics_log[-1]['mean_reward']:.2f}")
-        print(f"Test mean reward: {test_mean_reward:.2f}")
         print(f"Total training time: {total_time/60:.2f} minutes ({total_time/3600:.2f} hours)")
+        print("Model saved successfully.")
+        print("="*80)
 
 if __name__ == "__main__":
     os.environ["PYTHONWARNINGS"] = "ignore"

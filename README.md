@@ -1,8 +1,8 @@
 
 ***
-cvllm2.py with runcvllm2.sh to run the LoRA
+cvllm3.py with runcvllm4.sh to run the LoRA
 
-es_fine-tuning_conciseness_iid.py with conciseness.sh to run normal ES
+es_fullparam.py with conciseness1.sh to run normal ES
 ****
 
 # es-fine-tuning-paper

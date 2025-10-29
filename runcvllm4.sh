@@ -50,6 +50,7 @@ SIGMA=0.001
 ALPHA=0.0005
 MAX_NEW_TOKENS=100
 INITIAL_SEED=33
+CHECKPOINT_INTERVAL=100
 
 # LoRA settings
 LORA_R=32
@@ -73,6 +74,7 @@ echo "Model: $MODEL_NAME"
 echo "Population: $POPULATION_SIZE"
 echo "Iterations: $NUM_ITERATIONS"
 echo "Sigma: $SIGMA, Alpha: $ALPHA"
+echo "Checkpoint interval: $CHECKPOINT_INTERVAL"
 echo "=========================================="
 echo ""
 
@@ -81,7 +83,7 @@ if [ "$MODE" == "lora" ]; then
     echo "LoRA rank: $LORA_R, alpha: $LORA_ALPHA"
     echo ""
     
-    python conciseness/cvllm2.py \
+    python conciseness/cvllm3.py \
         --use_lora \
         --model_name "$MODEL_NAME" \
         --hf_cache_dir "$HF_CACHE_DIR" \
@@ -92,6 +94,7 @@ if [ "$MODE" == "lora" ]; then
         --alpha $ALPHA \
         --max_new_tokens $MAX_NEW_TOKENS \
         --initial_seed $INITIAL_SEED \
+        --checkpoint_interval $CHECKPOINT_INTERVAL \
         --lora_r $LORA_R \
         --lora_alpha $LORA_ALPHA \
         --lora_dropout $LORA_DROPOUT \
@@ -106,7 +109,7 @@ elif [ "$MODE" == "fullparam" ]; then
     echo "GPU threads: $GPU_THREADS"
     echo ""
     
-    python conciseness/cvllm2.py \
+    python conciseness/cvllm3.py \
         --model_name "$MODEL_NAME" \
         --hf_cache_dir "$HF_CACHE_DIR" \
         --precision "$PRECISION" \
@@ -116,6 +119,7 @@ elif [ "$MODE" == "fullparam" ]; then
         --alpha $ALPHA \
         --max_new_tokens $MAX_NEW_TOKENS \
         --initial_seed $INITIAL_SEED \
+        --checkpoint_interval $CHECKPOINT_INTERVAL \
         --gpu_threads $GPU_THREADS \
         --verbose
 
