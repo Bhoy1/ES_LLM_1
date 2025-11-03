@@ -39,7 +39,7 @@ export CUDA_VISIBLE_DEVICES=0
 MODE="${1:-lora}"
 
 # Common settings
-MODEL_NAME="Qwen/Qwen2.5-7B"
+MODEL_NAME="Qwen/Qwen2.5-7B-Instruct"
 HF_CACHE_DIR="./huggingface_cache"
 PRECISION="bfloat16"
 
@@ -50,7 +50,7 @@ SIGMA=0.001
 ALPHA=0.0005
 MAX_NEW_TOKENS=100
 INITIAL_SEED=33
-CHECKPOINT_INTERVAL=100
+CHECKPOINT_INTERVAL=10
 
 # LoRA settings
 LORA_R=32

@@ -7,12 +7,12 @@
 set -e
 
 # Configuration
-MODEL_NAME="Qwen/Qwen2.5-7B"
+MODEL_NAME="Qwen/Qwen2.5-7B-Instruct"
 HF_CACHE_DIR="huggingface_cache"
 PRECISION="bf16"  # Options: bf16, fp16, fp32
 GPU_THREADS=1
 NUM_GPUS=1
-CHECKPOINT_INTERVAL=100  # Evaluate on test set every N iterations
+CHECKPOINT_INTERVAL=10  # Evaluate on test set every N iterations
 
 # Optional: Set verbose mode
 VERBOSE_FLAG=""  # Add "--verbose" to enable verbose logging

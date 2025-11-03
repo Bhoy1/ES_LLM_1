@@ -1,4 +1,4 @@
-#permutations on gpu, not cpu in 2
+
 #added iterations evaluation to see convergence
 
 
@@ -146,13 +146,33 @@ def create_base_lora_adapter(model_name, args):
     return peft_model, lora_config
 
 
-def get_lora_parameters(peft_model):
+def get_lora_parameters(peft_model, verbose=False):
     """Get only the LoRA parameters (A and B matrices)"""
     lora_params = {}
     for name, param in peft_model.named_parameters():
         if 'lora' in name.lower() and param.requires_grad:
             lora_params[name] = param
+    
+    # Validation: Make sure we found LoRA parameters
+    if len(lora_params) == 0:
+        print("\n  WARNING: No LoRA parameters found!")
+        print("All parameter names:")
+        for name, param in peft_model.named_parameters():
+            print(f"  {name}: requires_grad={param.requires_grad}, shape={param.shape}")
+        raise ValueError("No LoRA parameters found in model!")
+    
+    # Only print if verbose flag is set
+    if verbose:
+        total_lora_params = sum(p.numel() for p in lora_params.values())
+        print(f"\n✓ Found {len(lora_params)} LoRA parameter tensors ({total_lora_params:,} total params)")
+        print("LoRA parameters found:")
+        for name in list(lora_params.keys())[:5]:  # Show first 5
+            print(f"  - {name}: shape={lora_params[name].shape}")
+        if len(lora_params) > 5:
+            print(f"  ... and {len(lora_params) - 5} more")
+    
     return lora_params
+
 
 
 def perturb_and_save_lora(base_lora_model, seed, sigma, temp_dir, adapter_id):
@@ -164,7 +184,7 @@ def perturb_and_save_lora(base_lora_model, seed, sigma, temp_dir, adapter_id):
     os.makedirs(adapter_path, exist_ok=True)
     
     # Get LoRA parameters
-    lora_params = get_lora_parameters(base_lora_model)
+    lora_params = get_lora_parameters(base_lora_model, verbose=False)
     
     # Perturb weights
     seed_shift = 0
@@ -295,7 +315,7 @@ def update_lora_weights_es(base_peft_model, seeds, rewards_normalized, sigma, al
     """
     Update LoRA weights using ES gradient estimate
     """
-    lora_params = get_lora_parameters(base_peft_model)
+    lora_params = get_lora_parameters(base_peft_model, verbose=False)
     
     seed_shift = 0
     for name, param in lora_params.items():
@@ -538,8 +558,13 @@ def main_lora_mode():
             torch_dtype=torch.bfloat16 if args.precision == 'bf16' else torch.float16,
             device_map='cuda',
         )
-        base_peft_model = PeftModel.from_pretrained(base_model_for_lora, base_adapter_dir)
+        base_peft_model = PeftModel.from_pretrained(base_model_for_lora, base_adapter_dir, is_trainable=True)
         print("[DEBUG] Base LoRA model reloaded successfully")
+
+        # Validate LoRA setup once with verbose output
+        print("\n[DEBUG] Validating LoRA setup...")
+        lora_params = get_lora_parameters(base_peft_model, verbose=True)
+        print("[DEBUG] LoRA validation complete")
         
         force_memory_cleanup()
         
