@@ -4,12 +4,12 @@
 ---
 
 <hr>
-<h2 id="layout-postv2title-evolution-strategies-with-loradate-2025-10-29categories-research-llms-continual-learning-evolution-strategies">layout: post(v2)<br>
+<h2 id="layout-postv3title-evolution-strategies-with-loradate-2025-11-3categories-research-llms-evolution-strategies">layout: post(v3)<br>
 title: “Evolution Strategies with LoRA”<br>
-date: 2025-10-29<br>
-categories: [research, LLMs, continual-learning, evolution-strategies]</h2>
+date: 2025-11-3<br>
+categories: [research, LLMs, evolution-strategies]</h2>
 <h2 id="overview">Overview</h2>
-<p>This post presents early experimental results from ongoing work on applying Evolution Strategies (ES) to optimize LoRA adapters instead of full model parameters.  While LoRA fine tuning is highly parameter efficient, its mean reward shows very similar overall performance to full fine tuning under the same ES setup.</p>
+<p>This post presents early experimental results from ongoing work on applying Evolution Strategies (ES) to optimize LoRA adapters instead of full model parameters.  While LoRA fine tuning is highly parameter efficient, its performance is unclear if it will match full parameter fine tunning from early experiments.</p>
 <p>This work builds on the framework introduced in <em>Evolution Strategies at Scale: LLM Fine-Tuning Beyond Reinforcement Learning</em> (<a href="https://arxiv.org/abs/2509.24372">arXiv:2509.24372v1</a>), which proposed the conciseness task as a lightweight benchmark for evaluating ES based fine tuning methods. The experiment here focuses on that same task, training on two prompts and evaluating on eight distinct test prompts to examine generalization and reward stability.</p>
 <p>This is the first evaluation of LoRA under ES. The goal is not to draw definitive conclusions, but to better understand how low rank parameterization interacts with gradient free optimization and to identify directions for improvement in future iterations.</p>
 <h2 id="background">Background</h2>
@@ -32,7 +32,7 @@ where <span class="katex--inline"><span class="katex"><span class="katex-mathml"
 <h2 id="experimental-setup">Experimental Setup</h2>
 <h3 id="dataset-and-evaluation">Dataset and Evaluation</h3>
 <p>The experiment focused on a single task: conciseness.<br>
-The model was trained on two short prompts and evaluated on eight generalization prompts.</p>
+Qwen-2.5-7B and Qwen-2.5-7B-Instruct was trained on two short prompts and evaluated on eight generalization prompts.</p>
 <p><strong>Training Prompts</strong></p>
 
 <table>
@@ -182,6 +182,7 @@ This simple heuristic encourages concise, targeted answers rather than verbose o
 </table><hr>
 <p>This setup establishes a compact testbed for studying how Evolution Strategies interact with LoRA’s low rank parameterization, offering a clean, reproducible baseline for further experiments.</p>
 <h2 id="results">Results</h2>
+<h3 id="model-qwen-2.5-7b-added-102725">Model: Qwen-2.5-7B (added 10/27/25)</h3>
 <p>When applying Evolution Strategies (ES) directly to the LoRA parameters, performance was very similar to full fine tuning across the eight test prompts, with only a small difference in mean reward.</p>
 
 <table>
@@ -216,10 +217,23 @@ These early findings suggest that LoRA’s reduced search space does not substan
 <p>The figure below visualizes test reward progression across 1000 Evolution Strategies (ES) iterations for both LoRA and full fine tuning.  The horizontal dashed line at 0 represents the ideal reward (perfect target-length match).</p>
 <p><img src="https://github.com/Bhoy1/ES_LLM_1/blob/23fd3b3dd677e0751de8bd8220ec78f913a3a62d/images/iteration_reward_plot.png?raw=true" alt="Reward Progression Over Iterations"></p>
 <p>Full fine tuning reaches −150 by iteration 500, while LoRA stays near −167, showing early convergence and limited improvement after. The results shown in a table earlier this section are the results after 1000 iterations.</p>
+<h3 id="model-qwen-2.5b-7b-instruct-added-11325">Model: Qwen-2.5B-7B-Instruct (added 11/3/25)</h3>
+<p>Best iteration taken for Full Parameter and Lora shown below in images. Model was evaluated every 10 iterations.<br>
+Full: Iteration 180<br>
+Lora: Iteration 150</p>
+<h3 id="per-prompt-reward-comparison-1">1. Per Prompt Reward Comparison</h3>
+<p><img src="https://raw.githubusercontent.com/Bhoy1/ES_LLM_1/1ccfb8c811d264898e865067b2c7b4dea8140f05/images/bar_plot_rewards1.png" alt="Bar Plot of Rewards"></p>
+<h3 id="cumulative-reward-over-prompts-1">2. Cumulative Reward Over Prompts</h3>
+<p>Cumulative reward reflects total progress as more prompts are evaluated.<br>
+<img src="https://raw.githubusercontent.com/Bhoy1/ES_LLM_1/1ccfb8c811d264898e865067b2c7b4dea8140f05/images/cumulative_reward_plot1.png" alt="Cumulative Reward Plot"></p>
+<h3 id="reward-progression-over-iterations-1">3. Reward Progression Over Iterations</h3>
+<p>The figure below visualizes test reward progression across 1000 Evolution Strategies (ES) iterations for both LoRA and full fine tuning.  The horizontal dashed line at 0 represents the ideal reward (perfect target-length match).<br>
+<img src="https://raw.githubusercontent.com/Bhoy1/ES_LLM_1/1ccfb8c811d264898e865067b2c7b4dea8140f05/images/iteration_reward_plot1.png" alt="Iteration Reward Plot"></p>
 <h2 id="discussion">Discussion</h2>
-<p>At this stage, the results suggest that LoRA and full fine tuning achieve comparable final rewards under Evolution Strategies (ES).</p>
-<p>As shown in the iteration plot, full fine tuning gradually improves up to iteration 500, reaching its best test reward of −150 before oscillating slightly.  In contrast, LoRA converges almost immediately near −167, showing strong early stability but minimal improvement thereafter.</p>
-<p>This pattern indicates that LoRA’s low rank parameterization enables efficient early convergence, yet that same constraint may limit exploration of higher reward regions later in training.  As we continue testing with more tasks and different ranks, we’ll dive deeper into how search space dimensionality interacts with reward stability and convergence.</p>
+<p>The results indicate that under Evolution Strategies (ES), both LoRA and full fine tuning achieve broadly comparable final rewards when applied to Qwen-2.5-7B. However, when evaluated on the Qwen-2.5-7B-Instruct variant used in the original paper, LoRA underperforms relative to full parameter fine tuning.</p>
+<p>Across all experiments, LoRA exhibits minimal change in reward throughout training, maintaining nearly constant values across iterations. In contrast, full parameter fine tuning on the Instruct Model continues to improve greatly before converging around iteration 180. Full parameter fine tuning on the Base Model only lead to slight improvement before convergence, suggesting a flatter or less informative reward landscape.</p>
+<p>These results indicate that LoRA’s low rank parameterization enables efficient early convergence but constrains the optimizer’s ability to explore higher reward regions later in training. The restricted parameter subspace stabilizes learning dynamics but may also limit long term exploration potential.</p>
+<p>Future work will examine this trade off between efficiency and expressivity more systematically. In particular, we plan to analyze how LoRA rank, ES variance (σ), and overall training dynamics influence convergence behavior. Additional experiments across diverse tasks will help clarify whether LoRA’s stability acts as useful regularization or instead limits its ability to adapt over longer training runs.</p>
 <h2 id="references">References</h2>
 <ul>
 <li>Evolution Strategies at Scale: LLM Fine-Tuning Beyond Reinforcement Learning<br>
