@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# ES Fine-tuning Script with LoRA/vLLM support
-# Usage: ./run_es.sh [lora|fullparam]
+# ES Fine-tuning with LoRA/vLLM
+# Usage: ./run_es.sh
 
 set -e  # Exit on error
 
@@ -14,11 +14,11 @@ conda activate es_env
 cd ~/ES_LLM
 
 # ============================================
-# Safe GPU Cleanup (won't kill this script)
+# GPU Cleanup
 # ============================================
 echo "Cleaning up GPU processes..."
 
-# Only target vLLM worker processes specifically
+# Target vLLM worker processes
 pgrep -f "vllm.worker" | xargs -r kill -9 2>/dev/null || true
 pgrep -f "ray::VLLM" | xargs -r kill -9 2>/dev/null || true
 
@@ -26,19 +26,20 @@ pgrep -f "ray::VLLM" | xargs -r kill -9 2>/dev/null || true
 ray stop --force 2>/dev/null || true
 sleep 2
 
-# Verify cleanup (don't do nuclear kill that might hit this script)
-echo "GPU status after cleanup:"
+# Show GPU status
+echo "GPU status:"
 nvidia-smi --query-gpu=index,memory.used --format=csv,noheader,nounits | \
     awk -F',' '{printf "GPU %s: %s MB\n", $1, $2}'
 echo "=========================================="
 
-# Set visible GPU explicitly (vLLM handles multi-GPU internally)
+# Set visible GPU (vLLM handles multi-GPU internally via tensor_parallel_size)
 export CUDA_VISIBLE_DEVICES=0
 
-# Default mode
-MODE="${1:-lora}"
+# ============================================
+# Configuration
+# ============================================
 
-# Common settings
+# Model settings
 MODEL_NAME="Qwen/Qwen2.5-7B-Instruct"
 HF_CACHE_DIR="./huggingface_cache"
 PRECISION="bfloat16"
@@ -46,11 +47,14 @@ PRECISION="bfloat16"
 # ES Hyperparameters
 NUM_ITERATIONS=1000
 POPULATION_SIZE=30
-SIGMA=0.001
-ALPHA=0.0005
-MAX_NEW_TOKENS=100
+SIGMA=0.0001
+ALPHA=0.001
 INITIAL_SEED=33
 CHECKPOINT_INTERVAL=10
+
+# Generation settings
+MAX_NEW_TOKENS=100
+DO_SAMPLE=""  # Add "--do_sample" to enable sampling
 
 # LoRA settings
 LORA_R=32
@@ -61,77 +65,43 @@ LORA_TARGET_MODULES="q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj"
 # vLLM settings
 VLLM_GPU_MEMORY=0.7
 VLLM_MAX_MODEL_LEN=2048
-VLLM_TENSOR_PARALLEL=1
+VLLM_TENSOR_PARALLEL=1  # Set to 4 for 4-GPU setup
 
-# Full-param settings
-GPU_THREADS=4
+# ============================================
+# Run Training
+# ============================================
 
 echo "=========================================="
-echo "ES Fine-tuning Script"
+echo "ES Fine-tuning with LoRA + vLLM"
 echo "=========================================="
-echo "Mode: $MODE"
 echo "Model: $MODEL_NAME"
-echo "Population: $POPULATION_SIZE"
-echo "Iterations: $NUM_ITERATIONS"
-echo "Sigma: $SIGMA, Alpha: $ALPHA"
+echo "Population: $POPULATION_SIZE | Iterations: $NUM_ITERATIONS"
+echo "Sigma: $SIGMA | Alpha: $ALPHA"
+echo "LoRA: r=$LORA_R, alpha=$LORA_ALPHA"
 echo "Checkpoint interval: $CHECKPOINT_INTERVAL"
+echo "Tensor parallel: $VLLM_TENSOR_PARALLEL"
 echo "=========================================="
 echo ""
 
-if [ "$MODE" == "lora" ]; then
-    echo "Running in LoRA+vLLM mode..."
-    echo "LoRA rank: $LORA_R, alpha: $LORA_ALPHA"
-    echo ""
-    
-    python conciseness/cvllm3.py \
-        --use_lora \
-        --model_name "$MODEL_NAME" \
-        --hf_cache_dir "$HF_CACHE_DIR" \
-        --precision "$PRECISION" \
-        --num_iterations $NUM_ITERATIONS \
-        --population_size $POPULATION_SIZE \
-        --sigma $SIGMA \
-        --alpha $ALPHA \
-        --max_new_tokens $MAX_NEW_TOKENS \
-        --initial_seed $INITIAL_SEED \
-        --checkpoint_interval $CHECKPOINT_INTERVAL \
-        --lora_r $LORA_R \
-        --lora_alpha $LORA_ALPHA \
-        --lora_dropout $LORA_DROPOUT \
-        --lora_target_modules "$LORA_TARGET_MODULES" \
-        --vllm_gpu_memory_utilization $VLLM_GPU_MEMORY \
-        --vllm_max_model_len $VLLM_MAX_MODEL_LEN \
-        --vllm_tensor_parallel_size $VLLM_TENSOR_PARALLEL \
-        --verbose
-
-elif [ "$MODE" == "fullparam" ]; then
-    echo "Running in Full-Param+Transformers mode..."
-    echo "GPU threads: $GPU_THREADS"
-    echo ""
-    
-    python conciseness/cvllm3.py \
-        --model_name "$MODEL_NAME" \
-        --hf_cache_dir "$HF_CACHE_DIR" \
-        --precision "$PRECISION" \
-        --num_iterations $NUM_ITERATIONS \
-        --population_size $POPULATION_SIZE \
-        --sigma $SIGMA \
-        --alpha $ALPHA \
-        --max_new_tokens $MAX_NEW_TOKENS \
-        --initial_seed $INITIAL_SEED \
-        --checkpoint_interval $CHECKPOINT_INTERVAL \
-        --gpu_threads $GPU_THREADS \
-        --verbose
-
-else
-    echo "Error: Invalid mode '$MODE'"
-    echo "Usage: $0 [lora|fullparam]"
-    echo ""
-    echo "Examples:"
-    echo "  $0 lora       # Run with LoRA+vLLM (recommended)"
-    echo "  $0 fullparam  # Run with full-param+Transformers (original)"
-    exit 1
-fi
+python conciseness/cvllm3.2.py \
+    --model_name "$MODEL_NAME" \
+    --hf_cache_dir "$HF_CACHE_DIR" \
+    --precision "$PRECISION" \
+    --num_iterations $NUM_ITERATIONS \
+    --population_size $POPULATION_SIZE \
+    --sigma $SIGMA \
+    --alpha $ALPHA \
+    --max_new_tokens $MAX_NEW_TOKENS \
+    --initial_seed $INITIAL_SEED \
+    --checkpoint_interval $CHECKPOINT_INTERVAL \
+    --lora_r $LORA_R \
+    --lora_alpha $LORA_ALPHA \
+    --lora_dropout $LORA_DROPOUT \
+    --lora_target_modules "$LORA_TARGET_MODULES" \
+    --vllm_gpu_memory_utilization $VLLM_GPU_MEMORY \
+    --vllm_max_model_len $VLLM_MAX_MODEL_LEN \
+    --vllm_tensor_parallel_size $VLLM_TENSOR_PARALLEL \
+    $DO_SAMPLE
 
 echo ""
 echo "=========================================="
