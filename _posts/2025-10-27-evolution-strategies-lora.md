@@ -4,9 +4,9 @@
 ---
 
 <hr>
-<h2 id="layout-postv3title-evolution-strategies-with-loradate-2025-11-3categories-research-llms-evolution-strategies">layout: post(v3)<br>
+<h2 id="layout-postv3title-evolution-strategies-with-loradate-2025-11-11categories-research-llms-evolution-strategies">layout: post(v3)<br>
 title: “Evolution Strategies with LoRA”<br>
-date: 2025-11-3<br>
+date: 2025-11-11<br>
 categories: [research, LLMs, evolution-strategies]</h2>
 <h2 id="overview">Overview</h2>
 <p>This post presents early experimental results from ongoing work on applying Evolution Strategies (ES) to optimize LoRA adapters instead of full model parameters. While LoRA fine tuning is highly parameter efficient, these initial experiments explore whether its performance can match that of full parameter fine tuning.</p>
@@ -31,8 +31,7 @@ W' = W + BA
 where <span class="katex--inline"><span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>r</mi><mo>≪</mo><mi>d</mi></mrow><annotation encoding="application/x-tex">r \ll d</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height: 0.5782em; vertical-align: -0.0391em;"></span><span class="mord mathnormal" style="margin-right: 0.02778em;">r</span><span class="mspace" style="margin-right: 0.277778em;"></span><span class="mrel">≪</span><span class="mspace" style="margin-right: 0.277778em;"></span></span><span class="base"><span class="strut" style="height: 0.69444em; vertical-align: 0em;"></span><span class="mord mathnormal">d</span></span></span></span></span>, reducing the number of trainable parameters. This low rank decomposition lets us fine tune large models efficiently by updating only a small subset of parameters.</p>
 <h2 id="experimental-setup">Experimental Setup</h2>
 <h3 id="dataset-and-evaluation">Dataset and Evaluation</h3>
-<p>The experiment focused on a single task: conciseness.<br>
-Qwen-2.5-7B and Qwen-2.5-7B-Instruct was trained on two short prompts and evaluated on eight generalization prompts.</p>
+<p>The experiment focused on a single task: conciseness.  Qwen-2.5-7B-Instruct was trained on two short prompts and evaluated on eight generalization prompts.</p>
 <p><strong>Training Prompts</strong></p>
 
 <table>
@@ -104,7 +103,85 @@ Qwen-2.5-7B and Qwen-2.5-7B-Instruct was trained on two short prompts and evalua
 <p>That is, the closer the generated response length is to the target’s length, the higher (less negative) the reward.<br>
 This simple heuristic encourages concise, targeted answers rather than verbose outputs.</p>
 <hr>
-<h3 id="evolution-strategies-es-hyperparameters">Evolution Strategies (ES) Hyperparameters</h3>
+<h2 id="model-qwen-2.5b-7b-instruct-added-111125">Model: Qwen-2.5B-7B-Instruct (added 11/11/25)</h2>
+<p>** The initial results posted here contained a methodological error in the LoRA implementation. As @Green0-0 identified (see <a href="https://github.com/VsonicV/es-fine-tuning-paper/discussions/11">GitHub discussion</a>), simultaneously perturbing both A and B matrices in LoRA does not yield effective results. The matrices must be perturbed alternately. I’ve preserved the original results below in the appendix with their timestamps to demonstrate the iterative nature of research and the value of community feedback in identifying and correcting errors.</p>
+<h3 id="evolution-strategies-es-hyperparameters---lora-configuration">Evolution Strategies (ES) Hyperparameters - LoRA Configuration</h3>
+
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>NUM_ITERATIONS</td>
+<td>1000</td>
+<td>Total ES optimization steps</td>
+</tr>
+<tr>
+<td>POPULATION_SIZE</td>
+<td>30</td>
+<td>Number of perturbed samples per generation</td>
+</tr>
+<tr>
+<td>SIGMA</td>
+<td>0.0075</td>
+<td>Standard deviation of Gaussian noise</td>
+</tr>
+<tr>
+<td>ALPHA</td>
+<td>0.005</td>
+<td>Learning rate / step size</td>
+</tr>
+<tr>
+<td>MAX_NEW_TOKENS</td>
+<td>100</td>
+<td>Maximum tokens generated per sample</td>
+</tr>
+<tr>
+<td>INITIAL_SEED</td>
+<td>33</td>
+<td>Random seed for reproducibility</td>
+</tr>
+</tbody>
+</table><hr>
+<h3 id="lora-configuration">LoRA Configuration</h3>
+
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>LORA_R</td>
+<td>256</td>
+<td>Rank (low-dimensional bottleneck size)</td>
+</tr>
+<tr>
+<td>LORA_ALPHA</td>
+<td>256</td>
+<td>Scaling factor for LoRA updates</td>
+</tr>
+<tr>
+<td>LORA_DROPOUT</td>
+<td>0.1</td>
+<td>Dropout applied to LoRA layers</td>
+</tr>
+<tr>
+<td>LORA_TARGET_MODULES</td>
+<td>q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj</td>
+<td>Targeted transformer submodules for LoRA adaptation</td>
+</tr>
+</tbody>
+</table><hr>
+<h3 id="evolution-strategies-es-hyperparameters---full-fine-tuning-configuration">Evolution Strategies (ES) Hyperparameters - Full Fine-tuning Configuration</h3>
 
 <table>
 <thead>
@@ -147,7 +224,81 @@ This simple heuristic encourages concise, targeted answers rather than verbose o
 </tr>
 </tbody>
 </table><hr>
-<h3 id="lora-configuration">LoRA Configuration</h3>
+<p>This setup establishes a compact testbed for studying how Evolution Strategies interact with LoRA’s low rank parameterization, offering a clean, reproducible baseline for further experiments.</p>
+<h2 id="results">Results</h2>
+<p>Best iteration taken for Full Parameter and Lora shown below in images. Model was evaluated every 10 iterations.<br>
+Full: Iteration 180<br>
+Lora: Iteration 990</p>
+<h3 id="per-prompt-reward-comparison">1. Per Prompt Reward Comparison</h3>
+<p><img src="https://github.com/Bhoy1/ES_LLM_1/blob/95c9fdac3b26dcab9fcc682fadca37a4e816e6a9/images/bar_plot_rewards2.png?raw=true" alt="Bar Plot Rewards"></p>
+<h3 id="cumulative-reward-over-prompts">2. Cumulative Reward Over Prompts</h3>
+<p>Cumulative reward reflects total progress as more prompts are evaluated.</p>
+<p><img src="https://github.com/Bhoy1/ES_LLM_1/blob/95c9fdac3b26dcab9fcc682fadca37a4e816e6a9/images/cumulative_reward_plot2.png?raw=true" alt="Cumulative Reward Plot"></p>
+<h3 id="reward-progression-over-iterations">3. Reward Progression Over Iterations</h3>
+<p>The figure below visualizes test reward progression across 1000 Evolution Strategies (ES) iterations for both LoRA and full fine tuning.  The horizontal dashed line at 0 represents the ideal reward (perfect target-length match).</p>
+<p><img src="https://github.com/Bhoy1/ES_LLM_1/blob/95c9fdac3b26dcab9fcc682fadca37a4e816e6a9/images/iteration_reward_plot2.png?raw=true" alt="Iteration Reward Plot"></p>
+<h2 id="discussion">Discussion</h2>
+<p>The results presented above represent a preliminary exploration comparing LoRA and full parameter fine tuning using Evolution Strategies on a constrained text generation task. While limited to a single hyperparameter configuration, several key observations emerge from the data.</p>
+<p><strong>Performance Comparison</strong>: LoRA achieved superior performance compared to full-parameter tuning on this task, reaching its best results at iteration 990 versus iteration 180 for the full parameter approach. The bar plot (Figure 1) reveals that LoRA maintains more consistent per prompt rewards, while the cumulative reward plot (Figure 2) shows LoRA’s advantage compounds across the evaluation set. Most notably, the iteration progression plot (Figure 3) demonstrates that LoRA converges more smoothly toward the target reward (dashed line at 0), suggesting better optimization stability with ES.</p>
+<p><strong>Limitations and Scope</strong>: These findings should be interpreted cautiously. The experiment was conducted on a relatively simple length matching task with a single hyperparameter configuration. The task’s simplicity may not reflect the challenges present in more complex fine tuning scenarios where full parameter methods might show different relative performance. Additionally, the computational efficiency advantages of LoRA (lower memory footprint, faster iteration times) weren’t quantified here but represent important practical considerations.</p>
+<p><strong>Broader Context</strong>: Despite these limitations, the results align with the hypothesis that low rank adaptation may provide a more navigable optimization landscape for Evolution Strategies, potentially due to the reduced parameter space constraining the search. This could explain both the improved final performance and the smoother convergence trajectory observed in Figure 3.</p>
+<p><strong>Community Collaboration</strong>: These experiments build upon ongoing community efforts to understand ES fine tuning dynamics. Notably, @Green0-0 conducted complementary experiments on the Countdown task from the original ES fine tuning paper, exploring a broader hyperparameter sweep (see <a href="https://github.com/VsonicV/es-fine-tuning-paper/discussions/11">GitHub discussion</a>).</p>
+<p><strong>Future Directions</strong>: To establish more robust conclusions, future work should include: (1) systematic hyperparameter sweeps for LoRA, (2) evaluation on diverse tasks of varying complexity, (3) computational cost analysis, and (4) investigation of scaling behavior with model size. Nevertheless, these initial results suggest that LoRA based ES fine tuning warrants further investigation as a potentially promising approach for parameter efficient LLM adaptation.</p>
+<h2 id="references">References</h2>
+<ul>
+<li>Evolution Strategies at Scale: LLM Fine-Tuning Beyond Reinforcement Learning<br>
+<a href="https://arxiv.org/abs/2509.24372">arXiv:2509.24372v1</a></li>
+<li>LoRA: Low-Rank Adaptation of Large Language Models<br>
+<a href="https://arxiv.org/abs/2106.09685">arXiv:2106.09685</a></li>
+</ul>
+<hr>
+<h2 id="appendix">Appendix</h2>
+<h2 id="model-qwen-2.5b-7b-instruct-added-11325">Model: Qwen-2.5B-7B-Instruct (added 11/3/25)</h2>
+<p><strong>Experiment where A and B (LoRA) were both perturbed in each ES generation step.</strong> This approach was later identified as methodologically flawed, as effective LoRA fine tuning requires alternating perturbations of the A and B matrices rather than simultaneous perturbations.</p>
+<h3 id="evolution-strategies-es-hyperparameters---lora-configuration-1">Evolution Strategies (ES) Hyperparameters - LoRA Configuration</h3>
+
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>NUM_ITERATIONS</td>
+<td>1000</td>
+<td>Total ES optimization steps</td>
+</tr>
+<tr>
+<td>POPULATION_SIZE</td>
+<td>30</td>
+<td>Number of perturbed samples per generation</td>
+</tr>
+<tr>
+<td>SIGMA</td>
+<td>0.0075</td>
+<td>Standard deviation of Gaussian noise</td>
+</tr>
+<tr>
+<td>ALPHA</td>
+<td>0.005</td>
+<td>Learning rate / step size</td>
+</tr>
+<tr>
+<td>MAX_NEW_TOKENS</td>
+<td>100</td>
+<td>Maximum tokens generated per sample</td>
+</tr>
+<tr>
+<td>INITIAL_SEED</td>
+<td>33</td>
+<td>Random seed for reproducibility</td>
+</tr>
+</tbody>
+</table><hr>
+<h3 id="lora-configuration-1">LoRA Configuration</h3>
 
 <table>
 <thead>
@@ -160,12 +311,12 @@ This simple heuristic encourages concise, targeted answers rather than verbose o
 <tbody>
 <tr>
 <td>LORA_R</td>
-<td>32</td>
+<td>256</td>
 <td>Rank (low-dimensional bottleneck size)</td>
 </tr>
 <tr>
 <td>LORA_ALPHA</td>
-<td>64</td>
+<td>256</td>
 <td>Scaling factor for LoRA updates</td>
 </tr>
 <tr>
@@ -180,9 +331,185 @@ This simple heuristic encourages concise, targeted answers rather than verbose o
 </tr>
 </tbody>
 </table><hr>
+<h3 id="evolution-strategies-es-hyperparameters---full-fine-tuning-configuration-1">Evolution Strategies (ES) Hyperparameters - Full Fine-tuning Configuration</h3>
+
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>NUM_ITERATIONS</td>
+<td>1000</td>
+<td>Total ES optimization steps</td>
+</tr>
+<tr>
+<td>POPULATION_SIZE</td>
+<td>30</td>
+<td>Number of perturbed samples per generation</td>
+</tr>
+<tr>
+<td>SIGMA</td>
+<td>0.001</td>
+<td>Standard deviation of Gaussian noise</td>
+</tr>
+<tr>
+<td>ALPHA</td>
+<td>0.0005</td>
+<td>Learning rate / step size</td>
+</tr>
+<tr>
+<td>MAX_NEW_TOKENS</td>
+<td>100</td>
+<td>Maximum tokens generated per sample</td>
+</tr>
+<tr>
+<td>INITIAL_SEED</td>
+<td>33</td>
+<td>Random seed for reproducibility</td>
+</tr>
+</tbody>
+</table><hr>
 <p>This setup establishes a compact testbed for studying how Evolution Strategies interact with LoRA’s low rank parameterization, offering a clean, reproducible baseline for further experiments.</p>
-<h2 id="results">Results</h2>
-<h3 id="model-qwen-2.5-7b-added-102725">Model: Qwen-2.5-7B (added 10/27/25)</h3>
+<h2 id="results-1">Results</h2>
+<p>Best iteration taken for Full Parameter and Lora shown below in images. Model was evaluated every 10 iterations.<br>
+Full: Iteration 180<br>
+Lora: Iteration 150</p>
+<h3 id="per-prompt-reward-comparison-1">1. Per Prompt Reward Comparison</h3>
+<p><img src="https://raw.githubusercontent.com/Bhoy1/ES_LLM_1/1ccfb8c811d264898e865067b2c7b4dea8140f05/images/bar_plot_rewards1.png" alt="Bar Plot of Rewards"></p>
+<h3 id="cumulative-reward-over-prompts-1">2. Cumulative Reward Over Prompts</h3>
+<p>Cumulative reward reflects total progress as more prompts are evaluated.<br>
+<img src="https://raw.githubusercontent.com/Bhoy1/ES_LLM_1/1ccfb8c811d264898e865067b2c7b4dea8140f05/images/cumulative_reward_plot1.png" alt="Cumulative Reward Plot"></p>
+<h3 id="reward-progression-over-iterations-1">3. Reward Progression Over Iterations</h3>
+<p>The figure below visualizes test reward progression across 1000 Evolution Strategies (ES) iterations for both LoRA and full fine tuning.  The horizontal dashed line at 0 represents the ideal reward (perfect target-length match).<br>
+<img src="https://raw.githubusercontent.com/Bhoy1/ES_LLM_1/1ccfb8c811d264898e865067b2c7b4dea8140f05/images/iteration_reward_plot1.png" alt="Iteration Reward Plot"></p>
+<h2 id="model-qwen-2.5-7b-added-102725">Model: Qwen-2.5-7B (added 10/27/25)</h2>
+<p><strong>Experiment where A and B (LoRA) were both perturbed in each ES generation step.</strong> This approach was later identified as methodologically flawed, as effective LoRA fine tuning requires alternating perturbations of the A and B matrices rather than simultaneous perturbations.</p>
+<h3 id="evolution-strategies-es-hyperparameters---lora-configuration-2">Evolution Strategies (ES) Hyperparameters - LoRA Configuration</h3>
+
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>NUM_ITERATIONS</td>
+<td>1000</td>
+<td>Total ES optimization steps</td>
+</tr>
+<tr>
+<td>POPULATION_SIZE</td>
+<td>30</td>
+<td>Number of perturbed samples per generation</td>
+</tr>
+<tr>
+<td>SIGMA</td>
+<td>0.0075</td>
+<td>Standard deviation of Gaussian noise</td>
+</tr>
+<tr>
+<td>ALPHA</td>
+<td>0.005</td>
+<td>Learning rate / step size</td>
+</tr>
+<tr>
+<td>MAX_NEW_TOKENS</td>
+<td>100</td>
+<td>Maximum tokens generated per sample</td>
+</tr>
+<tr>
+<td>INITIAL_SEED</td>
+<td>33</td>
+<td>Random seed for reproducibility</td>
+</tr>
+</tbody>
+</table><hr>
+<h3 id="lora-configuration-2">LoRA Configuration</h3>
+
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>LORA_R</td>
+<td>256</td>
+<td>Rank (low-dimensional bottleneck size)</td>
+</tr>
+<tr>
+<td>LORA_ALPHA</td>
+<td>256</td>
+<td>Scaling factor for LoRA updates</td>
+</tr>
+<tr>
+<td>LORA_DROPOUT</td>
+<td>0.1</td>
+<td>Dropout applied to LoRA layers</td>
+</tr>
+<tr>
+<td>LORA_TARGET_MODULES</td>
+<td>q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj</td>
+<td>Targeted transformer submodules for LoRA adaptation</td>
+</tr>
+</tbody>
+</table><hr>
+<h3 id="evolution-strategies-es-hyperparameters---full-fine-tuning-configuration-2">Evolution Strategies (ES) Hyperparameters - Full Fine-tuning Configuration</h3>
+
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>NUM_ITERATIONS</td>
+<td>1000</td>
+<td>Total ES optimization steps</td>
+</tr>
+<tr>
+<td>POPULATION_SIZE</td>
+<td>30</td>
+<td>Number of perturbed samples per generation</td>
+</tr>
+<tr>
+<td>SIGMA</td>
+<td>0.001</td>
+<td>Standard deviation of Gaussian noise</td>
+</tr>
+<tr>
+<td>ALPHA</td>
+<td>0.0005</td>
+<td>Learning rate / step size</td>
+</tr>
+<tr>
+<td>MAX_NEW_TOKENS</td>
+<td>100</td>
+<td>Maximum tokens generated per sample</td>
+</tr>
+<tr>
+<td>INITIAL_SEED</td>
+<td>33</td>
+<td>Random seed for reproducibility</td>
+</tr>
+</tbody>
+</table><hr>
+<p>This setup establishes a compact testbed for studying how Evolution Strategies interact with LoRA’s low rank parameterization, offering a clean, reproducible baseline for further experiments.</p>
+<h2 id="results-2">Results</h2>
 <p>When applying Evolution Strategies (ES) directly to the LoRA parameters, performance was very similar to full fine tuning across the eight test prompts, with only a small difference in mean reward.</p>
 
 <table>
@@ -207,39 +534,14 @@ This simple heuristic encourages concise, targeted answers rather than verbose o
 </tbody>
 </table><p>The total cumulative rewards were −1291 for full fine-tuning and −1335 for LoRA, indicating that both approaches achieve comparable performance under ES optimization.<br>
 These early findings suggest that LoRA’s reduced search space does not substantially degrade performance in this simple task, though it may still limit how effectively ES explores high reward directions as task complexity grows.</p>
-<h3 id="per-prompt-reward-comparison">1. Per Prompt Reward Comparison</h3>
+<h3 id="per-prompt-reward-comparison-2">1. Per Prompt Reward Comparison</h3>
 <p><img src="https://raw.githubusercontent.com/Bhoy1/ES_LLM_1/415498f89e86b50cd2710601da3a0fabbb4378c6/images/bar_plot_rewards.png" alt="Bar Plot Rewards"></p>
 <hr>
-<h3 id="cumulative-reward-over-prompts">2. Cumulative Reward Over Prompts</h3>
+<h3 id="cumulative-reward-over-prompts-2">2. Cumulative Reward Over Prompts</h3>
 <p>Cumulative reward reflects total progress as more prompts are evaluated.</p>
 <p><img src="https://raw.githubusercontent.com/Bhoy1/ES_LLM_1/415498f89e86b50cd2710601da3a0fabbb4378c6/images/cumulative_reward_plot.png" alt="Cumulative Reward Plot"></p>
-<h3 id="reward-progression-over-iterations">3. Reward Progression Over Iterations</h3>
+<h3 id="reward-progression-over-iterations-2">3. Reward Progression Over Iterations</h3>
 <p>The figure below visualizes test reward progression across 1000 Evolution Strategies (ES) iterations for both LoRA and full fine tuning.  The horizontal dashed line at 0 represents the ideal reward (perfect target-length match).</p>
 <p><img src="https://github.com/Bhoy1/ES_LLM_1/blob/23fd3b3dd677e0751de8bd8220ec78f913a3a62d/images/iteration_reward_plot.png?raw=true" alt="Reward Progression Over Iterations"></p>
 <p>Full fine tuning reaches −150 by iteration 500, while LoRA stays near −167, showing early convergence and limited improvement after. The results shown in a table earlier this section are the results after 1000 iterations.</p>
-<h3 id="model-qwen-2.5b-7b-instruct-added-11325">Model: Qwen-2.5B-7B-Instruct (added 11/3/25)</h3>
-<p>Best iteration taken for Full Parameter and Lora shown below in images. Model was evaluated every 10 iterations.<br>
-Full: Iteration 180<br>
-Lora: Iteration 150</p>
-<h3 id="per-prompt-reward-comparison-1">1. Per Prompt Reward Comparison</h3>
-<p><img src="https://raw.githubusercontent.com/Bhoy1/ES_LLM_1/1ccfb8c811d264898e865067b2c7b4dea8140f05/images/bar_plot_rewards1.png" alt="Bar Plot of Rewards"></p>
-<h3 id="cumulative-reward-over-prompts-1">2. Cumulative Reward Over Prompts</h3>
-<p>Cumulative reward reflects total progress as more prompts are evaluated.<br>
-<img src="https://raw.githubusercontent.com/Bhoy1/ES_LLM_1/1ccfb8c811d264898e865067b2c7b4dea8140f05/images/cumulative_reward_plot1.png" alt="Cumulative Reward Plot"></p>
-<h3 id="reward-progression-over-iterations-1">3. Reward Progression Over Iterations</h3>
-<p>The figure below visualizes test reward progression across 1000 Evolution Strategies (ES) iterations for both LoRA and full fine tuning.  The horizontal dashed line at 0 represents the ideal reward (perfect target-length match).<br>
-<img src="https://raw.githubusercontent.com/Bhoy1/ES_LLM_1/1ccfb8c811d264898e865067b2c7b4dea8140f05/images/iteration_reward_plot1.png" alt="Iteration Reward Plot"></p>
-<h2 id="discussion">Discussion</h2>
-<p>The results indicate that under Evolution Strategies (ES), both LoRA and full fine tuning achieve broadly comparable final rewards when applied to Qwen-2.5-7B. However, when evaluated on the Qwen-2.5-7B-Instruct variant used in the original paper, LoRA underperforms relative to full parameter fine tuning.</p>
-<p>Across all experiments, LoRA exhibits minimal change in reward throughout training, maintaining nearly constant values across iterations. In contrast, full parameter fine tuning on the Instruct Model continues to improve greatly before converging around iteration 180. Full parameter fine tuning on the Base Model only lead to slight improvement before convergence, suggesting a flatter or less informative reward landscape.</p>
-<p>These results indicate that LoRA’s low rank parameterization enables efficient early convergence but constrains the optimizer’s ability to explore higher reward regions later in training. The restricted parameter subspace stabilizes learning dynamics but may also limit long term exploration potential.</p>
-<p>Future work will examine this trade off between efficiency and expressivity more systematically. In particular, we plan to analyze how LoRA rank, ES variance (σ), and overall training dynamics influence convergence behavior. Additional experiments across diverse tasks will help clarify whether LoRA’s stability acts as useful regularization or instead limits its ability to adapt over longer training runs.</p>
-<h2 id="references">References</h2>
-<ul>
-<li>Evolution Strategies at Scale: LLM Fine-Tuning Beyond Reinforcement Learning<br>
-<a href="https://arxiv.org/abs/2509.24372">arXiv:2509.24372v1</a></li>
-<li>LoRA: Low-Rank Adaptation of Large Language Models<br>
-<a href="https://arxiv.org/abs/2106.09685">arXiv:2106.09685</a></li>
-</ul>
-<hr>
 
