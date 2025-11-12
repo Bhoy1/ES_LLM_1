@@ -1,5 +1,5 @@
-#conciseness/cvllm3.2.py
-#cleaned up version of working
+#conciseness/cvllm3.2_alternate_AB.py
+#Alternates between perturbing LoRA A and B matrices
 
 
 import torch
@@ -35,6 +35,8 @@ parser.add_argument('--sigma', type=float, default=0.001, help='Perturbation noi
 parser.add_argument('--alpha', type=float, default=0.0005, help='Learning rate')
 parser.add_argument('--initial_seed', type=int, default=33)
 parser.add_argument('--checkpoint_interval', type=int, default=100)
+parser.add_argument('--train_example_interval', type=int, default=10, 
+                   help='Print training examples every N iterations')
 
 # Generation parameters
 parser.add_argument('--max_new_tokens', type=int, default=100)
@@ -120,25 +122,69 @@ def create_base_lora_adapter(model_name, args):
     return peft_model, lora_config
 
 
-def get_lora_parameters(peft_model):
-    """Get only the LoRA parameters (A and B matrices)"""
+# MODIFICATION 1: Update get_lora_parameters to select A or B matrices
+def get_lora_parameters(peft_model, perturb_matrix='B'):
+    """Get LoRA parameters to perturb
+    
+    Args:
+        peft_model: The PEFT model
+        perturb_matrix: Which matrix to perturb - 'A', 'B', or 'both'
+    """
     lora_params = {}
     for name, param in peft_model.named_parameters():
         if 'lora' in name.lower() and param.requires_grad:
-            lora_params[name] = param
+            if perturb_matrix == 'A':
+                if 'lora_A' in name or 'lora_a' in name:
+                    lora_params[name] = param
+            elif perturb_matrix == 'B':
+                if 'lora_B' in name or 'lora_b' in name:
+                    lora_params[name] = param
+            elif perturb_matrix == 'both':
+                if any(x in name for x in ['lora_A', 'lora_a', 'lora_B', 'lora_b']):
+                    lora_params[name] = param
     
     if len(lora_params) == 0:
-        raise ValueError("No LoRA parameters found in model!")
+        raise ValueError(f"No LoRA {perturb_matrix} parameters found in model!")
     
     return lora_params
 
+# MODIFICATION 2: Add verification function
+def inspect_lora_parameters(peft_model):
+    """Debug: show all LoRA parameter names and which will be perturbed"""
+    print("\n" + "="*60)
+    print("LoRA Parameters:")
+    print("="*60)
+    a_params = []
+    b_params = []
+    
+    for name, param in peft_model.named_parameters():
+        if 'lora' in name.lower() and param.requires_grad:
+            if 'lora_A' in name or 'lora_a' in name:
+                a_params.append((name, param.shape))
+            elif 'lora_B' in name or 'lora_b' in name:
+                b_params.append((name, param.shape))
+    
+    print(f"\nA matrices: {len(a_params)}")
+    for name, shape in a_params[:3]:  # Show first 3
+        print(f"  {name}: {shape}")
+    if len(a_params) > 3:
+        print(f"  ... and {len(a_params) - 3} more")
+    
+    print(f"\nB matrices: {len(b_params)}")
+    for name, shape in b_params[:3]:  # Show first 3
+        print(f"  {name}: {shape}")
+    if len(b_params) > 3:
+        print(f"  ... and {len(b_params) - 3} more")
+    
+    print("="*60 + "\n")
 
-def perturb_and_save_lora(base_lora_model, seed, sigma, temp_dir, adapter_id):
+
+def perturb_and_save_lora(base_lora_model, seed, sigma, temp_dir, adapter_id, perturb_matrix='B'):
     """Perturb LoRA weights and save to disk. Returns path to saved adapter."""
     adapter_path = os.path.join(temp_dir, f"adapter_{adapter_id}")
     os.makedirs(adapter_path, exist_ok=True)
     
-    lora_params = get_lora_parameters(base_lora_model)
+    lora_params = get_lora_parameters(base_lora_model, perturb_matrix=perturb_matrix)
     
     # Perturb weights
     seed_shift = 0
@@ -257,9 +303,40 @@ def evaluate_on_test_set_vllm(llm, adapter_path, test_dataset, args, global_lora
     return test_results
 
 
-def update_lora_weights_es(base_peft_model, seeds, rewards_normalized, sigma, alpha):
+def show_training_examples(llm, adapter_path, dataset, args, global_lora_id, num_examples=None):
+    """Show what the current model generates on training examples"""
+    if num_examples is None:
+        num_examples = min(2, len(dataset))  # Show first 2 examples by default
+    
+    sampling_params = SamplingParams(
+        temperature=0.0 if not args.do_sample else 1.0,
+        max_tokens=args.max_new_tokens
+    )
+    
+    lora_request = LoRARequest(f"train_example_{global_lora_id}", global_lora_id, adapter_path)
+    
+    print(f"\n{'─'*60}")
+    print("Current Training Examples:")
+    print(f"{'─'*60}")
+    
+    for idx, (prompt, target) in enumerate(dataset[:num_examples]):
+        outputs = llm.generate([prompt], sampling_params, lora_request=lora_request)
+        generated_text = outputs[0].outputs[0].text
+        reward = compute_reward(generated_text, target)
+        
+        print(f"\nExample {idx + 1}:")
+        print(f"  Prompt: {prompt}")
+        print(f"  Target: '{target}' (len={len(target)})")
+        print(f"  Generated: '{generated_text}' (len={len(generated_text)})")
+        print(f"  Reward: {reward:.2f}")
+    
+    print(f"{'─'*60}\n")
+
+
+
+def update_lora_weights_es(base_peft_model, seeds, rewards_normalized, sigma, alpha, perturb_matrix='B'):
     """Update LoRA weights using ES gradient estimate"""
-    lora_params = get_lora_parameters(base_peft_model)
+    lora_params = get_lora_parameters(base_peft_model, perturb_matrix=perturb_matrix)
     
     seed_shift = 0
     for name, param in lora_params.items():
@@ -285,13 +362,14 @@ def update_lora_weights_es(base_peft_model, seeds, rewards_normalized, sigma, al
 
 def main():
     print(f"\n{'='*60}")
-    print(f"ES Fine-tuning with LoRA + vLLM")
+    print(f"ES Fine-tuning with LoRA + vLLM (Alternating A/B)")
     print(f"{'='*60}\n")
     print(f"Model: {args.model_name}")
     print(f"Population size: {args.population_size}, Iterations: {args.num_iterations}")
     print(f"Sigma: {args.sigma}, Alpha: {args.alpha}")
     print(f"LoRA: r={args.lora_r}, alpha={args.lora_alpha}")
-    print(f"Checkpoint interval: {args.checkpoint_interval}")
+    print(f"Checkpoint interval: {args.checkpoint_interval}, Train example interval: {args.train_example_interval}")
+    print(f"Strategy: Alternating A and B matrices per iteration")
     
     # Create temporary directory for adapters
     temp_dir = tempfile.mkdtemp(prefix="es_lora_adapters_")
@@ -342,6 +420,10 @@ def main():
         )
         base_peft_model = PeftModel.from_pretrained(base_model_for_lora, base_adapter_dir, 
                                                      is_trainable=True)
+
+        # Show LoRA structure
+        inspect_lora_parameters(base_peft_model)
+
         print("Base LoRA model reloaded\n")
         
         force_memory_cleanup()
@@ -357,7 +439,7 @@ def main():
         checkpoint_history = []
         
         # Prepare save directory name
-        save_dir = (f"finetuned_{args.model_name}_es_lora_"
+        save_dir = (f"finetuned_{args.model_name}_es_lora_alternating_"
                    f"seed{args.initial_seed}_pop{args.population_size}_"
                    f"iter{args.num_iterations}_sigma{args.sigma}_alpha{args.alpha}_"
                    f"r{args.lora_r}_q{len(dataset)}")
@@ -365,14 +447,17 @@ def main():
         
         # Main ES training loop
         print("="*60)
-        print("Starting ES Training")
+        print("Starting ES Training (Alternating A/B)")
         print("="*60 + "\n")
         
         for iteration in range(args.num_iterations):
             iter_start_time = time.time()
             force_memory_cleanup()
             
-            print(f"Iteration {iteration + 1}/{args.num_iterations}")
+            # MODIFICATION 3: Alternate between A and B matrices
+            perturb_matrix = 'A' if iteration % 2 == 0 else 'B'
+            
+            print(f"Iteration {iteration + 1}/{args.num_iterations} [Perturbing {perturb_matrix} matrices]")
             
             # Generate seeds for this iteration
             seeds = np.random.randint(0, 2**30, size=args.population_size, dtype=np.int64).tolist()
@@ -382,7 +467,8 @@ def main():
             adapter_paths = []
             for seed_idx, seed in seeds_info:
                 adapter_path = perturb_and_save_lora(
-                    base_peft_model, seed, args.sigma, temp_dir, seed_idx
+                    base_peft_model, seed, args.sigma, temp_dir, seed_idx, 
+                    perturb_matrix=perturb_matrix
                 )
                 adapter_paths.append(adapter_path)
             
@@ -402,7 +488,8 @@ def main():
             rewards_normalized = (rewards_tensor - rewards_tensor.mean()) / (rewards_tensor.std() + 1e-8)
             
             # Update base LoRA weights using ES
-            update_lora_weights_es(base_peft_model, seeds, rewards_normalized, args.sigma, args.alpha)
+            update_lora_weights_es(base_peft_model, seeds, rewards_normalized, args.sigma, args.alpha, 
+                                 perturb_matrix=perturb_matrix)
             
             # Save updated base adapter
             base_peft_model.save_pretrained(base_adapter_dir)
@@ -422,6 +509,7 @@ def main():
             
             metrics_log.append({
                 'iteration': iteration + 1,
+                'perturb_matrix': perturb_matrix,
                 'time': iter_time,
                 'mean_reward': mean_reward,
                 'min_reward': min_reward,
@@ -432,6 +520,11 @@ def main():
             
             print(f"  Time: {iter_time:.2f}s | Mean: {mean_reward:.2f} | "
                   f"Min: {min_reward:.2f} | Max: {max_reward:.2f}")
+            
+            # Show training examples periodically
+            if (iteration + 1) % args.train_example_interval == 0:
+                global_lora_id += 1
+                show_training_examples(llm, base_adapter_dir, dataset, args, global_lora_id, num_examples=2)
             
             # Checkpoint evaluation
             if (iteration + 1) % args.checkpoint_interval == 0:
